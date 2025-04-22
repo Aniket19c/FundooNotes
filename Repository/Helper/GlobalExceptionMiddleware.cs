@@ -5,7 +5,6 @@ using Repository.Helper.CustomExceptions;
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Net;
-using System.Security.Authentication;
 using System.Threading.Tasks;
 
 namespace Repository.Helper
@@ -39,12 +38,14 @@ namespace Repository.Helper
         {
             context.Response.ContentType = "application/json";
 
+            // Handling different exceptions and setting appropriate status codes
             context.Response.StatusCode = exception switch
             {
                 UserNotFoundException => StatusCodes.Status404NotFound,
                 UserAlreadyExistsException => StatusCodes.Status409Conflict,
                 UnauthorizedAccessException => StatusCodes.Status403Forbidden,
                 ValidationException => StatusCodes.Status400BadRequest,
+                DatabaseException => StatusCodes.Status500InternalServerError,
                 _ => StatusCodes.Status500InternalServerError
             };
 
