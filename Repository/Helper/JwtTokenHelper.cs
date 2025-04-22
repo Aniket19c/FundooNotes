@@ -16,7 +16,7 @@ namespace Repository_Layer.Helper
             _configuration = configuration;
         }
 
-        public string GenerateToken(string email)
+        public string GenerateToken(string email,int id)
         {
             var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -24,7 +24,7 @@ namespace Repository_Layer.Helper
             var claims = new[]
             {
                 new Claim(ClaimTypes.Email, email),
-                new Claim(ClaimTypes.NameIdentifier, email), // You can change this to ID if available
+                new Claim(ClaimTypes.NameIdentifier, id.ToString()),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 

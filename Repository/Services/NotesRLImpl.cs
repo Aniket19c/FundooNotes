@@ -26,29 +26,53 @@ namespace Repository.Services
             _logger = logger;
         }
 
-        public async Task<ResponseDto<NotesEntity>> CreateNotesAsync(NotesEntity notesEntity, int userId)
+        public async Task<ResponseDto<NotesEntity>> CreateNotesAsync(CreateNoteDto noteDto, int userId)
         {
             try
             {
-                notesEntity.UserId = userId;
-                notesEntity.Created = DateTime.UtcNow;
-                notesEntity.Edited = DateTime.UtcNow;
-                await _context.Notes.AddAsync(notesEntity);
+                var note = new NotesEntity
+                {
+                    Title = noteDto.Title,
+                    Description = noteDto.Description,
+                    Reminder = noteDto.Reminder ?? DateTime.Now,
+                    Backgroundcolor = noteDto.Backgroundcolor,
+                    Image = "", 
+                    Pin = noteDto.Pin,
+                    Trash = noteDto.Trash,
+                    Archieve = noteDto.Archieve,
+                    Created = DateTime.Now,
+                    Edited = DateTime.Now,
+                    UserId = userId
+                };
+
+                _context.Notes.Add(note);
                 await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Note created successfully for UserId {UserId}: NoteId {NoteId}", userId, note.NoteId);
 
                 return new ResponseDto<NotesEntity>
                 {
                     success = true,
-                    message = "Note created successfully",
-                    data = notesEntity
+                    message = "Note created successfully.",
+                    data = note
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Exception in CreateNotesAsync");
-                throw new DatabaseException();
+                var errorMessage = ex.InnerException?.Message ?? ex.Message;
+
+                _logger.LogError(ex, "Error creating note for UserId {UserId}", userId);
+
+                return new ResponseDto<NotesEntity>
+                {
+                    success = false,
+                    message = $"Failed to create note: {errorMessage}",
+                    data = null
+                };
             }
         }
+
+
 
         public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(long noteId, int userId)
         {
@@ -66,7 +90,7 @@ namespace Repository.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Exception in RetrieveNotesAsync");
+                _logger.LogError(ex, "Error retrieving note");
                 throw;
             }
         }
@@ -85,7 +109,7 @@ namespace Repository.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Exception in RetrieveAllNotesAsync");
+                _logger.LogError(ex, "Error retrieving all notes");
                 throw;
             }
         }
@@ -111,7 +135,7 @@ namespace Repository.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Exception in UpdateNotesAsync");
+                _logger.LogError(ex, "Error updating note");
                 throw;
             }
         }
@@ -126,11 +150,16 @@ namespace Repository.Services
                 _context.Notes.Remove(note);
                 await _context.SaveChangesAsync();
 
-                return new ResponseDto<string> { success = true, message = "Note deleted successfully", data = null };
+                return new ResponseDto<string>
+                {
+                    success = true,
+                    message = "Note deleted successfully",
+                    data = null
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Exception in DeleteNoteAsync");
+                _logger.LogError(ex, "Error deleting note");
                 throw;
             }
         }
@@ -160,42 +189,57 @@ namespace Repository.Services
             return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Trash), false, "Note restored from trash successfully");
         }
 
-        public async Task<ResponseDto<string>> BackgroundColorNoteAsync(long noteId, string backgroundColor)
+        public async Task<ResponseDto<string>> BackgroundColorNoteAsync(long noteId, string color)
         {
             try
             {
-                var note = await _context.Notes.FindAsync(noteId);
+                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId);
                 if (note == null) throw new NotesNotFoundException();
 
-                note.Backgroundcolor = backgroundColor;
+                note.Backgroundcolor = color;
                 await _context.SaveChangesAsync();
 
-                return new ResponseDto<string> { success = true, message = "Background color updated", data = backgroundColor };
+                return new ResponseDto<string>
+                {
+                    success = true,
+                    message = "Note background color updated successfully",
+                    data = "Background color updated"
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Exception in BackgroundColorNoteAsync");
+                _logger.LogError(ex, "Error updating background color");
                 throw;
             }
         }
 
-        public async Task<ResponseDto<string>> ImageNotesAsync(IFormFile image, long noteId, int userId)
+
+        public async Task<ResponseDto<NotesEntity>> ImageNotesAsync(IFormFile image, long noteId, int userId)
         {
             try
             {
                 var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
                 if (note == null) throw new NotesNotFoundException();
 
-                using var ms = new MemoryStream();
-                await image.CopyToAsync(ms);
-                note.Image = Convert.ToBase64String(ms.ToArray());
+                var filePath = Path.Combine("path_to_images", image.FileName);
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await image.CopyToAsync(stream);
+                }
+                note.Image = filePath;
+
                 await _context.SaveChangesAsync();
 
-                return new ResponseDto<string> { success = true, message = "Image added to note", data = null };
+                return new ResponseDto<NotesEntity>
+                {
+                    success = true,
+                    message = "Image added successfully",
+                    data = note
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Exception in ImageNotesAsync");
+                _logger.LogError(ex, "Error adding image to note");
                 throw;
             }
         }
@@ -207,14 +251,23 @@ namespace Repository.Services
                 var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
                 if (note == null) throw new NotesNotFoundException();
 
-                typeof(NotesEntity).GetProperty(propertyName)?.SetValue(note, value);
-                await _context.SaveChangesAsync();
+                var propertyInfo = typeof(NotesEntity).GetProperty(propertyName);
+                if (propertyInfo != null)
+                {
+                    propertyInfo.SetValue(note, value);
+                    await _context.SaveChangesAsync();
+                }
 
-                return new ResponseDto<string> { success = true, message = successMessage, data = null };
+                return new ResponseDto<string>
+                {
+                    success = true,
+                    message = successMessage,
+                    data = null
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Exception in ToggleBooleanProperty for {propertyName}");
+                _logger.LogError(ex, $"Error toggling {propertyName}");
                 throw;
             }
         }

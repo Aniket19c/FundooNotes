@@ -149,7 +149,7 @@ namespace Repository.Services
                     throw new UnauthorizedAccessException("Invalid email or password.");
                 }
 
-                var token = _jwtHelper.GenerateToken(user.Email);
+                var token = _jwtHelper.GenerateToken(user.Email,user.ID);
 
                 var loginResponse = new LoginResponseDto
                 {

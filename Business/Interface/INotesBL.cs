@@ -4,9 +4,9 @@ using Repository.DTO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Repository.Interface
+namespace Business.Interface
 {
-    public interface INotesRL
+    public interface INotesBL
     {
         Task<ResponseDto<NotesEntity>> CreateNotesAsync(CreateNoteDto noteDto, int userId);
         Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(long noteId, int userId);
