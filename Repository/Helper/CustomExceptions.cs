@@ -22,4 +22,11 @@ namespace Repository.Helper.CustomExceptions
         {
         }
     }
+
+    public class NotesNotFoundException : Exception
+    {
+        public NotesNotFoundException(string message = "Note not found.") : base(message)
+        {
+        }
+    }
 }

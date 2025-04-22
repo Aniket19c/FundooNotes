@@ -24,6 +24,6 @@ namespace Models.Entity
         [Required]
 
         public string Password { get; set; }
-        public ICollection<NotesModel> Notes { get; set; }
+        public ICollection<NotesEntity> Notes { get; set; }
     }
 }
