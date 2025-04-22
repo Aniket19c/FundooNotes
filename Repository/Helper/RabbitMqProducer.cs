@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 
 namespace Repository.Helper
@@ -12,10 +13,14 @@ namespace Repository.Helper
     public class RabbitMqProducer
     {
         private readonly IConfiguration? _configuration;
-        public RabbitMqProducer(IConfiguration? configuration   )
+        private readonly ILogger<RabbitMqProducer> _logger;
+
+        public RabbitMqProducer(IConfiguration? configuration, ILogger<RabbitMqProducer> logger)
         {
             _configuration = configuration;
+            _logger = logger;
         }
+
         public void SendOtpQueue(string email, string otp)
         {
             try
@@ -44,13 +49,14 @@ namespace Repository.Helper
                                      routingKey: _configuration["RabbitMQ:QueueName"],
                                      basicProperties: null,
                                      body: body);
+
+                _logger.LogInformation($"OTP message published to queue for {email}.");
             }
             catch (Exception ex)
-            { 
-                Console.WriteLine($"RabbitMQ send failed: {ex.Message}");
+            {
+                _logger.LogError(ex, $"RabbitMQ publish failed for email: {email}");
                 throw;
             }
         }
-
     }
 }

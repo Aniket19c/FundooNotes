@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Net;
@@ -11,17 +12,18 @@ namespace Repository.Helper
     public class RabbitMqConsumer
     {
         private readonly IConfiguration _configuration;
+        private readonly ILogger<RabbitMqConsumer> _logger;
 
-        public RabbitMqConsumer(IConfiguration configuration)
+        public RabbitMqConsumer(IConfiguration configuration, ILogger<RabbitMqConsumer> logger)
         {
             _configuration = configuration;
+            _logger = logger;
         }
 
         public void Consume()
         {
             try
             {
-                
                 var factory = new ConnectionFactory()
                 {
                     HostName = _configuration["RabbitMQ:Host"],
@@ -34,7 +36,7 @@ namespace Repository.Helper
                 using var channel = connection.CreateModel();
 
                 channel.QueueDeclare(queue: _configuration["RabbitMQ:QueueName"],
-                                     durable: false,    
+                                     durable: false,
                                      exclusive: false,
                                      autoDelete: false);
 
@@ -47,28 +49,26 @@ namespace Repository.Helper
                         var message = Encoding.UTF8.GetString(body);
 
                         var data = JsonSerializer.Deserialize<Dictionary<string, string>>(message);
-
                         var toEmail = data["Email"];
                         var otp = data["Otp"];
+
+                        _logger.LogInformation($"Received OTP message for {toEmail}.");
 
                         SendEmail(toEmail, "Fundoo Notes - OTP", $"Your OTP is: {otp}");
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Error processing message: {ex.Message}");
+                        _logger.LogError(ex, "Error processing received message.");
                     }
                 };
 
-
-
                 channel.BasicConsume(queue: _configuration["RabbitMQ:QueueName"], autoAck: true, consumer: consumer);
+                _logger.LogInformation("RabbitMQ Consumer started.");
                 Console.ReadLine();
             }
             catch (Exception ex)
             {
-               
-                Console.WriteLine($"Error initializing RabbitMQ Consumer: {ex.Message}");
-                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                _logger.LogError(ex, "Error initializing RabbitMQ Consumer.");
             }
         }
 
@@ -76,7 +76,6 @@ namespace Repository.Helper
         {
             try
             {
-                
                 var smtpClient = new SmtpClient(_configuration["SmtpSettings:Host"])
                 {
                     Port = int.Parse(_configuration["SmtpSettings:Port"]),
@@ -84,7 +83,6 @@ namespace Repository.Helper
                     EnableSsl = bool.Parse(_configuration["SmtpSettings:EnableSsl"])
                 };
 
-               
                 var mailMessage = new MailMessage
                 {
                     From = new MailAddress(_configuration["SmtpSettings:Email"]),
@@ -95,17 +93,13 @@ namespace Repository.Helper
 
                 mailMessage.To.Add(toEmail);
 
-               
                 smtpClient.Send(mailMessage);
-                Console.WriteLine($"Email sent successfully to {toEmail}.");
+                _logger.LogInformation($"Email sent successfully to {toEmail}.");
             }
             catch (Exception ex)
             {
-               
-                Console.WriteLine($"Error sending email: {ex.Message}");
-                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                _logger.LogError(ex, $"Error sending email to {toEmail}.");
             }
-            
         }
     }
 }
