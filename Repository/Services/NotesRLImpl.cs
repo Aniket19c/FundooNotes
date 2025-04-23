@@ -1,16 +1,17 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Models.Entity;
 using Repository.Context;
 using Repository.DTO;
-using Repository.Helper;
 using Repository.Helper.CustomExceptions;
 using Repository.Interface;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Repository.Services
@@ -19,11 +20,13 @@ namespace Repository.Services
     {
         private readonly UserContext _context;
         private readonly ILogger<NotesRLImpl> _logger;
+        private readonly IDistributedCache _cache;
 
-        public NotesRLImpl(UserContext context, ILogger<NotesRLImpl> logger)
+        public NotesRLImpl(UserContext context, ILogger<NotesRLImpl> logger, IDistributedCache cache)
         {
             _context = context;
             _logger = logger;
+            _cache = cache;
         }
 
         public async Task<ResponseDto<NotesEntity>> CreateNotesAsync(CreateNoteDto noteDto, int userId)
@@ -36,7 +39,7 @@ namespace Repository.Services
                     Description = noteDto.Description,
                     Reminder = noteDto.Reminder ?? DateTime.Now,
                     Backgroundcolor = noteDto.Backgroundcolor,
-                    Image = "", 
+                    Image = "",
                     Pin = noteDto.Pin,
                     Trash = noteDto.Trash,
                     Archieve = noteDto.Archieve,
@@ -47,6 +50,8 @@ namespace Repository.Services
 
                 _context.Notes.Add(note);
                 await _context.SaveChangesAsync();
+
+                await _cache.RemoveAsync($"AllNotes_User_{userId}"); 
 
                 _logger.LogInformation("Note created successfully for UserId {UserId}: NoteId {NoteId}", userId, note.NoteId);
 
@@ -60,7 +65,6 @@ namespace Repository.Services
             catch (Exception ex)
             {
                 var errorMessage = ex.InnerException?.Message ?? ex.Message;
-
                 _logger.LogError(ex, "Error creating note for UserId {UserId}", userId);
 
                 return new ResponseDto<NotesEntity>
@@ -71,8 +75,6 @@ namespace Repository.Services
                 };
             }
         }
-
-
 
         public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(long noteId, int userId)
         {
@@ -99,7 +101,27 @@ namespace Repository.Services
         {
             try
             {
-                var notes = await _context.Notes.Where(n => n.UserId == userId).ToListAsync();
+                string cacheKey = $"AllNotes_User_{userId}";
+                string serializedNotes;
+                List<NotesEntity> notes;
+
+                var cachedData = await _cache.GetStringAsync(cacheKey);
+                if (!string.IsNullOrEmpty(cachedData))
+                {
+                    notes = JsonSerializer.Deserialize<List<NotesEntity>>(cachedData);
+                    _logger.LogInformation("Fetched notes from cache for UserId {UserId}", userId);
+                }
+                else
+                {
+                    notes = await _context.Notes.Where(n => n.UserId == userId).ToListAsync();
+                    serializedNotes = JsonSerializer.Serialize(notes);
+                    var cacheOptions = new DistributedCacheEntryOptions()
+                        .SetAbsoluteExpiration(TimeSpan.FromMinutes(10));
+                    await _cache.SetStringAsync(cacheKey, serializedNotes, cacheOptions);
+
+                    _logger.LogInformation("Fetched notes from DB and stored in cache for UserId {UserId}", userId);
+                }
+
                 return new ResponseDto<List<NotesEntity>>
                 {
                     success = true,
@@ -126,6 +148,8 @@ namespace Repository.Services
                 note.Edited = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
+                await _cache.RemoveAsync($"AllNotes_User_{userId}"); 
+
                 return new ResponseDto<NotesEntity>
                 {
                     success = true,
@@ -149,6 +173,8 @@ namespace Repository.Services
 
                 _context.Notes.Remove(note);
                 await _context.SaveChangesAsync();
+
+                await _cache.RemoveAsync($"AllNotes_User_{userId}"); 
 
                 return new ResponseDto<string>
                 {
@@ -213,7 +239,6 @@ namespace Repository.Services
             }
         }
 
-
         public async Task<ResponseDto<NotesEntity>> ImageNotesAsync(IFormFile image, long noteId, int userId)
         {
             try
@@ -229,6 +254,7 @@ namespace Repository.Services
                 note.Image = filePath;
 
                 await _context.SaveChangesAsync();
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -257,6 +283,8 @@ namespace Repository.Services
                     propertyInfo.SetValue(note, value);
                     await _context.SaveChangesAsync();
                 }
+
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
 
                 return new ResponseDto<string>
                 {

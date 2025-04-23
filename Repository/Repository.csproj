@@ -24,6 +24,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NLog.Web.AspNetCore" Version="5.4.0" />
     <PackageReference Include="RabbitMQ.Client" Version="6.4.0" />
+    <PackageReference Include="StackExchange.Redis" Version="2.8.31" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.8.0" />
   </ItemGroup>
 

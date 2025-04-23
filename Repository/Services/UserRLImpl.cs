@@ -11,6 +11,8 @@ using RabbitMQ.Client;
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Caching.Distributed;
+using System.Text.Json;
 
 namespace Repository.Services
 {
@@ -22,8 +24,11 @@ namespace Repository.Services
         private readonly RabbitMqProducer _producer;
         private readonly RabbitMqConsumer _consumer;
         private readonly ILogger<UserRLImpl> _logger;
+        private readonly IDistributedCache _cache;
 
-        public UserRLImpl(UserContext context, JwtTokenHelper jwtTokenHelper, IConfiguration configuration, RabbitMqProducer producer, RabbitMqConsumer consumer,ILogger<UserRLImpl> logger)
+        public UserRLImpl(UserContext context, JwtTokenHelper jwtTokenHelper, IConfiguration configuration,
+                          RabbitMqProducer producer, RabbitMqConsumer consumer, ILogger<UserRLImpl> logger,
+                          IDistributedCache cache)
         {
             _context = context;
             _jwtHelper = jwtTokenHelper;
@@ -31,28 +36,53 @@ namespace Repository.Services
             _producer = producer;
             _consumer = consumer;
             _logger = logger;
+            _cache = cache;
         }
 
         public async Task<ResponseDto<List<UserResponse>>> GetAllUsersAsync()
         {
             try
             {
-                _logger.LogInformation("Fetching all users from database");
-                var users = await _context.Users.ToListAsync();
+                _logger.LogInformation("Checking Redis cache for user list");
 
-                if (users == null || users.Count == 0)
+                string cacheKey = "AllUsers";
+                string cachedData = await _cache.GetStringAsync(cacheKey);
+
+                List<UserResponse> userResponses;
+
+                if (!string.IsNullOrEmpty(cachedData))
                 {
-                    _logger.LogWarning("No users found.");
-                    throw new UserNotFoundException("No users found.");
+                    _logger.LogInformation("User list found in cache");
+                    userResponses = JsonSerializer.Deserialize<List<UserResponse>>(cachedData);
+                }
+                else
+                {
+                    _logger.LogInformation("Cache miss: Fetching users from DB");
+                    var users = await _context.Users.ToListAsync();
+
+                    if (users == null || users.Count == 0)
+                    {
+                        _logger.LogWarning("No users found.");
+                        throw new UserNotFoundException("No users found.");
+                    }
+
+                    userResponses = users.Select(user => new UserResponse
+                    {
+                        email = user.Email,
+                        firstName = user.FirstName,
+                        lastName = user.LastName
+                    }).ToList();
+
+                    var options = new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+                    };
+
+                    string serializedData = JsonSerializer.Serialize(userResponses);
+                    await _cache.SetStringAsync(cacheKey, serializedData, options);
+                    _logger.LogInformation("User list cached");
                 }
 
-                var userResponses = users.Select(user => new UserResponse
-                {
-                    email = user.Email,
-                    firstName = user.FirstName,
-                    lastName = user.LastName
-                }).ToList();
-                _logger.LogInformation("Users fetched successfully");
                 return new ResponseDto<List<UserResponse>>
                 {
                     success = true,
@@ -76,14 +106,14 @@ namespace Repository.Services
                 if (user == null)
                 {
                     _logger.LogWarning("User not found during deletion");
-
                     throw new UserNotFoundException();
                 }
 
                 _context.Users.Remove(user);
-                _logger.LogInformation("User deleted successfully");
                 await _context.SaveChangesAsync();
+                await _cache.RemoveAsync("AllUsers");
 
+                _logger.LogInformation("User deleted successfully");
                 return new ResponseDto<string>
                 {
                     success = true,
@@ -119,9 +149,10 @@ namespace Repository.Services
                 };
 
                 await _context.Users.AddAsync(userEntity);
-                _logger.LogInformation("User registered successfully");
                 await _context.SaveChangesAsync();
+                await _cache.RemoveAsync("AllUsers");
 
+                _logger.LogInformation("User registered successfully");
                 return new ResponseDto<string>
                 {
                     success = true,
@@ -149,15 +180,15 @@ namespace Repository.Services
                     throw new UnauthorizedAccessException("Invalid email or password.");
                 }
 
-                var token = _jwtHelper.GenerateToken(user.Email,user.ID);
+                var token = _jwtHelper.GenerateToken(user.Email, user.ID);
 
                 var loginResponse = new LoginResponseDto
                 {
                     Email = user.Email,
                     Token = token
                 };
-                _logger.LogInformation("Login successful");
 
+                _logger.LogInformation("Login successful");
                 return new ResponseDto<LoginResponseDto>
                 {
                     success = true,
@@ -187,9 +218,9 @@ namespace Repository.Services
                 var otp = new Random().Next(100000, 999999).ToString();
 
                 _producer.SendOtpQueue(email, otp);
-                _logger.LogInformation("OTP sent successfully");
                 _consumer.Consume();
 
+                _logger.LogInformation("OTP sent successfully");
                 return new ResponseDto<string>
                 {
                     success = true,
@@ -197,7 +228,7 @@ namespace Repository.Services
                     data = null
                 };
             }
-            catch (Exception ex) 
+            catch (Exception ex)
             {
                 _logger.LogError(ex, "Exception in ForgetPasswordAsync");
                 throw;
@@ -212,9 +243,7 @@ namespace Repository.Services
                 var user = await _context.Users.SingleOrDefaultAsync(u => u.Email == email);
                 if (user == null)
                 {
-                    _logger.LogWarning("Incorrect old password");
-
-
+                    _logger.LogWarning("User not found.");
                     throw new UserNotFoundException("User not found.");
                 }
 
@@ -225,9 +254,10 @@ namespace Repository.Services
 
                 user.Password = PasswordHelper.HashPassword(dto.newPassword);
                 _context.Users.Update(user);
-                _logger.LogInformation("Password updated successfully");
                 await _context.SaveChangesAsync();
+                await _cache.RemoveAsync("AllUsers");
 
+                _logger.LogInformation("Password updated successfully");
                 return new ResponseDto<string>
                 {
                     success = true,
