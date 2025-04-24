@@ -33,4 +33,8 @@
     <ProjectReference Include="..\RabbitMqConsumer\RabbitMqConsumer.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Migrations\" />
+  </ItemGroup>
+
 </Project>

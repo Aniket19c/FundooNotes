@@ -34,7 +34,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(long noteId, int userId)
+        public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(int noteId, int userId)
         {
             try
             {
@@ -60,7 +60,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<NotesEntity>> UpdateNotesAsync(int userId, long noteId, NotesEntity updatedNote)
+        public async Task<ResponseDto<NotesEntity>> UpdateNotesAsync(int userId, int noteId, NotesEntity updatedNote)
         {
             try
             {
@@ -73,7 +73,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<string>> DeleteNoteAsync(int userId, long noteId)
+        public async Task<ResponseDto<string>> DeleteNoteAsync(int userId, int noteId)
         {
             try
             {
@@ -86,7 +86,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<string>> TrashNoteAsync(long noteId, int userId)
+        public async Task<ResponseDto<string>> TrashNoteAsync(int noteId, int userId)
         {
             try
             {
@@ -99,7 +99,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<string>> PinNoteAsync(long noteId, int userId)
+        public async Task<ResponseDto<string>> PinNoteAsync(int noteId, int userId)
         {
             try
             {
@@ -112,7 +112,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<string>> ArchiveNoteAsync(int userId, long noteId)
+        public async Task<ResponseDto<string>> ArchiveNoteAsync(int userId, int noteId)
         {
             try
             {
@@ -125,7 +125,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<string>> BackgroundColorNoteAsync(long noteId, string color)
+        public async Task<ResponseDto<string>> BackgroundColorNoteAsync(int noteId, string color)
         {
             try
             {
@@ -138,7 +138,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<NotesEntity>> ImageNotesAsync(IFormFile image, long noteId, int userId)
+        public async Task<ResponseDto<NotesEntity>> ImageNotesAsync(IFormFile image, int noteId, int userId)
         {
             try
             {
@@ -151,7 +151,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<string>> UnarchiveNoteAsync(int userId, long noteId)
+        public async Task<ResponseDto<string>> UnarchiveNoteAsync(int userId, int noteId)
         {
             try
             {
@@ -164,7 +164,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<string>> RestoreNoteAsync(long noteId, int userId)
+        public async Task<ResponseDto<string>> RestoreNoteAsync(int noteId, int userId)
         {
             try
             {
@@ -176,5 +176,34 @@ namespace Business.Services
                 throw;
             }
         }
+        public async Task<ResponseDto<string>> AddCollaboratorAsync(CollaboratorDto dto, int userId)
+        {
+            try
+            {
+                return await _notesRL.AddCollaboratorAsync(dto, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in AddCollaboratorAsync method");
+                throw;
+            }
+        }
+
+        public async Task<ResponseDto<string>> RemoveCollaboratorAsync(CollaboratorDto dto, int userId)
+        {
+            try
+            {
+                
+                return await _notesRL.RemoveCollaboratorAsync(dto, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in RemoveCollaboratorAsync method");
+                throw;
+            }
+        }
+
+
+
     }
 }

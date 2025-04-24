@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Models.Entity;
+using Repository.Entity;
+
 
 namespace Repository.Context
 {
@@ -15,6 +17,8 @@ namespace Repository.Context
         }
         public DbSet<UserEntity> Users { get; set; }
         public DbSet<NotesEntity> Notes { get; set; }
+        public DbSet<CollaboratorEntity> Collaborators { get; set; }
+
 
     }
 }

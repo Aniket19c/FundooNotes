@@ -34,14 +34,12 @@ namespace Repository.Migrations
                         .HasColumnType("bit");
 
                     b.Property<string>("Backgroundcolor")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("Created")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Description")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("Edited")
@@ -57,7 +55,6 @@ namespace Repository.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Title")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("Trash")
@@ -102,6 +99,33 @@ namespace Repository.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("Repository.Entity.CollaboratorEntity", b =>
+                {
+                    b.Property<int>("CollaboratorId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CollaboratorId"));
+
+                    b.Property<string>("CollaboratorEmail")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("NoteId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("CollaboratorId");
+
+                    b.HasIndex("NoteId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Collaborators");
+                });
+
             modelBuilder.Entity("Models.Entity.NotesEntity", b =>
                 {
                     b.HasOne("Models.Entity.UserEntity", "User")
@@ -113,8 +137,29 @@ namespace Repository.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Repository.Entity.CollaboratorEntity", b =>
+                {
+                    b.HasOne("Models.Entity.NotesEntity", "Note")
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Models.Entity.UserEntity", "User")
+                        .WithMany("Collaborators")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Note");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Models.Entity.UserEntity", b =>
                 {
+                    b.Navigation("Collaborators");
+
                     b.Navigation("Notes");
                 });
 #pragma warning restore 612, 618

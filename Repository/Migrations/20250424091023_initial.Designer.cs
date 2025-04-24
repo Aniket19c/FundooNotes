@@ -12,8 +12,8 @@ using Repository.Context;
 namespace Repository.Migrations
 {
     [DbContext(typeof(UserContext))]
-    [Migration("20250422054128_AddNotesTableWithUserFK")]
-    partial class AddNotesTableWithUserFK
+    [Migration("20250424091023_initial")]
+    partial class initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -25,7 +25,7 @@ namespace Repository.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("Models.Entity.NotesModel", b =>
+            modelBuilder.Entity("Models.Entity.NotesEntity", b =>
                 {
                     b.Property<int>("NoteId")
                         .ValueGeneratedOnAdd()
@@ -37,31 +37,27 @@ namespace Repository.Migrations
                         .HasColumnType("bit");
 
                     b.Property<string>("Backgroundcolor")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("Created")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Description")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("Edited")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Image")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("Pin")
                         .HasColumnType("bit");
 
-                    b.Property<DateTime>("Reminder")
+                    b.Property<DateTime?>("Reminder")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Title")
-                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("Trash")
@@ -106,7 +102,34 @@ namespace Repository.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("Models.Entity.NotesModel", b =>
+            modelBuilder.Entity("Repository.Entity.CollaboratorEntity", b =>
+                {
+                    b.Property<int>("CollaboratorId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("CollaboratorId"));
+
+                    b.Property<string>("CollaboratorEmail")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("NoteId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("CollaboratorId");
+
+                    b.HasIndex("NoteId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Collaborators");
+                });
+
+            modelBuilder.Entity("Models.Entity.NotesEntity", b =>
                 {
                     b.HasOne("Models.Entity.UserEntity", "User")
                         .WithMany("Notes")
@@ -117,8 +140,29 @@ namespace Repository.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Repository.Entity.CollaboratorEntity", b =>
+                {
+                    b.HasOne("Models.Entity.NotesEntity", "Note")
+                        .WithMany()
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Models.Entity.UserEntity", "User")
+                        .WithMany("Collaborators")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Note");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Models.Entity.UserEntity", b =>
                 {
+                    b.Navigation("Collaborators");
+
                     b.Navigation("Notes");
                 });
 #pragma warning restore 612, 618

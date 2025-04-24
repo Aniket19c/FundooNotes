@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Repository.Entity;
 
 namespace Models.Entity
 {
@@ -25,5 +26,6 @@ namespace Models.Entity
 
         public string Password { get; set; }
         public ICollection<NotesEntity> Notes { get; set; }
+        public virtual ICollection<CollaboratorEntity> Collaborators { get; set; }
     }
 }

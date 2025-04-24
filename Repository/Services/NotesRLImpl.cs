@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Models.Entity;
 using Repository.Context;
 using Repository.DTO;
+using Repository.Entity;
 using Repository.Helper.CustomExceptions;
 using Repository.Interface;
 using System;
@@ -29,6 +30,20 @@ namespace Repository.Services
             _cache = cache;
         }
 
+        private async Task<NotesEntity> GetNoteIfAuthorizedAsync(int noteId, int userId)
+        {
+            var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
+            if (note != null) return note;
+
+            var isCollaborator = await _context.Collaborators
+                .AnyAsync(c => c.NoteId == noteId && c.UserId == userId);
+
+            if (isCollaborator)
+                return await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId);
+
+            throw new NotesNotFoundException();
+        }
+
         public async Task<ResponseDto<NotesEntity>> CreateNotesAsync(CreateNoteDto noteDto, int userId)
         {
             try
@@ -50,10 +65,7 @@ namespace Repository.Services
 
                 _context.Notes.Add(note);
                 await _context.SaveChangesAsync();
-
-                await _cache.RemoveAsync($"AllNotes_User_{userId}"); 
-
-                _logger.LogInformation("Note created successfully for UserId {UserId}: NoteId {NoteId}", userId, note.NoteId);
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -66,7 +78,6 @@ namespace Repository.Services
             {
                 var errorMessage = ex.InnerException?.Message ?? ex.Message;
                 _logger.LogError(ex, "Error creating note for UserId {UserId}", userId);
-
                 return new ResponseDto<NotesEntity>
                 {
                     success = false,
@@ -76,18 +87,16 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(long noteId, int userId)
+        public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(int noteId, int userId)
         {
             try
             {
-                var notes = await _context.Notes.Where(n => n.NoteId == noteId && n.UserId == userId).ToListAsync();
-                if (!notes.Any()) throw new NotesNotFoundException();
-
+                var note = await GetNoteIfAuthorizedAsync(noteId, userId);
                 return new ResponseDto<List<NotesEntity>>
                 {
                     success = true,
                     message = "Note retrieved successfully",
-                    data = notes
+                    data = new List<NotesEntity> { note }
                 };
             }
             catch (Exception ex)
@@ -102,24 +111,31 @@ namespace Repository.Services
             try
             {
                 string cacheKey = $"AllNotes_User_{userId}";
-                string serializedNotes;
                 List<NotesEntity> notes;
-
                 var cachedData = await _cache.GetStringAsync(cacheKey);
+
                 if (!string.IsNullOrEmpty(cachedData))
                 {
                     notes = JsonSerializer.Deserialize<List<NotesEntity>>(cachedData);
-                    _logger.LogInformation("Fetched notes from cache for UserId {UserId}", userId);
                 }
                 else
                 {
-                    notes = await _context.Notes.Where(n => n.UserId == userId).ToListAsync();
-                    serializedNotes = JsonSerializer.Serialize(notes);
-                    var cacheOptions = new DistributedCacheEntryOptions()
-                        .SetAbsoluteExpiration(TimeSpan.FromMinutes(10));
-                    await _cache.SetStringAsync(cacheKey, serializedNotes, cacheOptions);
+                    var userNotes = await _context.Notes.Where(n => n.UserId == userId).ToListAsync();
+                    var collaboratorNoteIds = await _context.Collaborators
+                        .Where(c => c.UserId == userId)
+                        .Select(c => c.NoteId)
+                        .ToListAsync();
+                    var collaboratorNotes = await _context.Notes
+                        .Where(n => collaboratorNoteIds.Contains(n.NoteId))
+                        .ToListAsync();
 
-                    _logger.LogInformation("Fetched notes from DB and stored in cache for UserId {UserId}", userId);
+                    notes = userNotes.Concat(collaboratorNotes).ToList();
+
+                    var serializedNotes = JsonSerializer.Serialize(notes);
+                    await _cache.SetStringAsync(cacheKey, serializedNotes, new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+                    });
                 }
 
                 return new ResponseDto<List<NotesEntity>>
@@ -136,19 +152,16 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<NotesEntity>> UpdateNotesAsync(int userId, long noteId, NotesEntity updatedNote)
+        public async Task<ResponseDto<NotesEntity>> UpdateNotesAsync(int userId, int noteId, NotesEntity updatedNote)
         {
             try
             {
-                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
-                if (note == null) throw new NotesNotFoundException();
-
+                var note = await GetNoteIfAuthorizedAsync(noteId, userId);
                 note.Title = updatedNote.Title;
                 note.Description = updatedNote.Description;
                 note.Edited = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-
-                await _cache.RemoveAsync($"AllNotes_User_{userId}"); 
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -164,23 +177,19 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<string>> DeleteNoteAsync(int userId, long noteId)
+        public async Task<ResponseDto<string>> DeleteNoteAsync(int userId, int noteId)
         {
             try
             {
-                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
-                if (note == null) throw new NotesNotFoundException();
-
+                var note = await GetNoteIfAuthorizedAsync(noteId, userId);
                 _context.Notes.Remove(note);
                 await _context.SaveChangesAsync();
-
-                await _cache.RemoveAsync($"AllNotes_User_{userId}"); 
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
 
                 return new ResponseDto<string>
                 {
                     success = true,
-                    message = "Note deleted successfully",
-                    data = null
+                    message = "Note deleted successfully"
                 };
             }
             catch (Exception ex)
@@ -190,32 +199,32 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<string>> TrashNoteAsync(long noteId, int userId)
+        public async Task<ResponseDto<string>> TrashNoteAsync(int noteId, int userId)
         {
             return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Trash), true, "Note trashed successfully");
         }
 
-        public async Task<ResponseDto<string>> PinNoteAsync(long noteId, int userId)
+        public async Task<ResponseDto<string>> PinNoteAsync(int noteId, int userId)
         {
             return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Pin), true, "Note pinned successfully");
         }
 
-        public async Task<ResponseDto<string>> ArchiveNoteAsync(int userId, long noteId)
+        public async Task<ResponseDto<string>> ArchiveNoteAsync(int userId, int noteId)
         {
             return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Archieve), true, "Note archived successfully");
         }
 
-        public async Task<ResponseDto<string>> UnarchiveNoteAsync(int userId, long noteId)
+        public async Task<ResponseDto<string>> UnarchiveNoteAsync(int userId, int noteId)
         {
             return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Archieve), false, "Note unarchived successfully");
         }
 
-        public async Task<ResponseDto<string>> RestoreNoteAsync(long noteId, int userId)
+        public async Task<ResponseDto<string>> RestoreNoteAsync(int noteId, int userId)
         {
             return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Trash), false, "Note restored from trash successfully");
         }
 
-        public async Task<ResponseDto<string>> BackgroundColorNoteAsync(long noteId, string color)
+        public async Task<ResponseDto<string>> BackgroundColorNoteAsync(int noteId, string color)
         {
             try
             {
@@ -239,20 +248,17 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<NotesEntity>> ImageNotesAsync(IFormFile image, long noteId, int userId)
+        public async Task<ResponseDto<NotesEntity>> ImageNotesAsync(IFormFile image, int noteId, int userId)
         {
             try
             {
-                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
-                if (note == null) throw new NotesNotFoundException();
-
+                var note = await GetNoteIfAuthorizedAsync(noteId, userId);
                 var filePath = Path.Combine("path_to_images", image.FileName);
                 using (var stream = new FileStream(filePath, FileMode.Create))
                 {
                     await image.CopyToAsync(stream);
                 }
                 note.Image = filePath;
-
                 await _context.SaveChangesAsync();
                 await _cache.RemoveAsync($"AllNotes_User_{userId}");
 
@@ -270,13 +276,11 @@ namespace Repository.Services
             }
         }
 
-        private async Task<ResponseDto<string>> ToggleBooleanProperty(long noteId, int userId, string propertyName, bool value, string successMessage)
+        private async Task<ResponseDto<string>> ToggleBooleanProperty(int noteId, int userId, string propertyName, bool value, string successMessage)
         {
             try
             {
-                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
-                if (note == null) throw new NotesNotFoundException();
-
+                var note = await GetNoteIfAuthorizedAsync(noteId, userId);
                 var propertyInfo = typeof(NotesEntity).GetProperty(propertyName);
                 if (propertyInfo != null)
                 {
@@ -289,14 +293,74 @@ namespace Repository.Services
                 return new ResponseDto<string>
                 {
                     success = true,
-                    message = successMessage,
-                    data = null
+                    message = successMessage
                 };
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error toggling {propertyName}");
                 throw;
+            }
+        }
+
+        public async Task<ResponseDto<string>> AddCollaboratorAsync(CollaboratorDto dto, int userId)
+        {
+            try
+            {
+                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == dto.NoteId && n.UserId == userId);
+                if (note == null) 
+                    return new ResponseDto<string> { 
+                    success = false, 
+                    message = "Note not found or user doesn't have access to this note"
+                };
+
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.CollaboratorEmail);
+                if (user == null) return new ResponseDto<string> { success = false, message = "Collaborator not found" };
+
+                var existingCollaborator = await _context.Collaborators.FirstOrDefaultAsync(c => c.NoteId == dto.NoteId && c.UserId == user.ID);
+                if (existingCollaborator != null) return new ResponseDto<string> { success = false, message = "Collaborator is already added to this note" };
+
+                var collaborator = new CollaboratorEntity {
+                    NoteId = dto.NoteId, 
+                    UserId = user.ID, 
+                    CollaboratorEmail = dto.CollaboratorEmail 
+                };
+                await _context.Collaborators.AddAsync(collaborator);
+                await _context.SaveChangesAsync();
+
+                return new ResponseDto<string> { success = true, message = "Collaborator added successfully" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in AddCollaboratorAsync method");
+                return new ResponseDto<string> { success = false, message = "An error occurred while adding the collaborator" };
+            }
+        }
+
+        public async Task<ResponseDto<string>> RemoveCollaboratorAsync(CollaboratorDto dto, int userId)
+        {
+            try
+            {
+                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == dto.NoteId && n.UserId == userId);
+                if (note == null)
+                    return new ResponseDto<string> {
+                    success = false, 
+                    message = "Note not found or user doesn't have access to this note" 
+                };
+
+                var collaborator = await _context.Collaborators
+                    .FirstOrDefaultAsync(c => c.NoteId == dto.NoteId && c.CollaboratorEmail == dto.CollaboratorEmail);
+                if (collaborator == null) return new ResponseDto<string> { success = false, message = "Collaborator not found" };
+
+                _context.Collaborators.Remove(collaborator);
+                await _context.SaveChangesAsync();
+
+                return new ResponseDto<string> { success = true, message = "Collaborator removed successfully" };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in RemoveCollaboratorAsync method");
+                return new ResponseDto<string> { success = false, message = "An error occurred while removing the collaborator" };
             }
         }
     }
