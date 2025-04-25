@@ -1,6 +1,6 @@
 ﻿namespace Repository.DTO
 {
-    public class UserResponse
+    public class UserResponseDto
     {
         public string email { get; set; } = string.Empty;
         public string firstName { get; set; } = string.Empty;

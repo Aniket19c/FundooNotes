@@ -1,7 +1,5 @@
-﻿using System;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-
 
 namespace Models.Entity
 {
@@ -9,8 +7,7 @@ namespace Models.Entity
     {
         [Key]
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
-        public int NoteId { get; set; } 
-
+        public int NoteId { get; set; }
         public string? Title { get; set; }
         public string? Description { get; set; }
         public DateTime? Reminder { get; set; }

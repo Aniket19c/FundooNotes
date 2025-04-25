@@ -6,9 +6,6 @@ using Repository.Interface;
 using Repository.Helper;
 using Repository.Helper.CustomExceptions;
 using Repository_Layer.Helper;
-using static Repository.Helper.CustomExceptions.UserAlreadyExistsException;
-using RabbitMQ.Client;
-using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Caching.Distributed;
@@ -26,9 +23,7 @@ namespace Repository.Services
         private readonly ILogger<UserRLImpl> _logger;
         private readonly IDistributedCache _cache;
 
-        public UserRLImpl(UserContext context, JwtTokenHelper jwtTokenHelper, IConfiguration configuration,
-                          RabbitMqProducer producer, RabbitMqConsumer consumer, ILogger<UserRLImpl> logger,
-                          IDistributedCache cache)
+        public UserRLImpl(UserContext context, JwtTokenHelper jwtTokenHelper, IConfiguration configuration,RabbitMqProducer producer,RabbitMqConsumer consumer,ILogger<UserRLImpl> logger,IDistributedCache cache)
         {
             _context = context;
             _jwtHelper = jwtTokenHelper;
@@ -39,7 +34,7 @@ namespace Repository.Services
             _cache = cache;
         }
 
-        public async Task<ResponseDto<List<UserResponse>>> GetAllUsersAsync()
+        public async Task<ResponseDto<List<UserResponseDto>>> GetAllUsersAsync()
         {
             try
             {
@@ -48,12 +43,12 @@ namespace Repository.Services
                 string cacheKey = "AllUsers";
                 string cachedData = await _cache.GetStringAsync(cacheKey);
 
-                List<UserResponse> userResponses;
+                List<UserResponseDto> userResponses;
 
                 if (!string.IsNullOrEmpty(cachedData))
                 {
                     _logger.LogInformation("User list found in cache");
-                    userResponses = JsonSerializer.Deserialize<List<UserResponse>>(cachedData);
+                    userResponses = JsonSerializer.Deserialize<List<UserResponseDto>>(cachedData);
                 }
                 else
                 {
@@ -66,7 +61,7 @@ namespace Repository.Services
                         throw new UserNotFoundException("No users found.");
                     }
 
-                    userResponses = users.Select(user => new UserResponse
+                    userResponses = users.Select(user => new UserResponseDto
                     {
                         email = user.Email,
                         firstName = user.FirstName,
@@ -83,7 +78,7 @@ namespace Repository.Services
                     _logger.LogInformation("User list cached");
                 }
 
-                return new ResponseDto<List<UserResponse>>
+                return new ResponseDto<List<UserResponseDto>>
                 {
                     success = true,
                     message = "Users fetched successfully",
@@ -128,7 +123,7 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<string>> RegisterUserAsync(UserRequest request)
+        public async Task<ResponseDto<string>> RegisterUserAsync(UserRequestDto request)
         {
             try
             {
@@ -236,7 +231,7 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<string>> ResetPasswordAsync(ResetPassword dto, string email)
+        public async Task<ResponseDto<string>> ResetPasswordAsync(ResetPasswordDto dto, string email)
         {
             try
             {

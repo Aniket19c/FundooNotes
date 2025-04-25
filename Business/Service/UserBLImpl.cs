@@ -1,11 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Azure.Core;
-using Business.Interface;
-using Microsoft.AspNetCore.Identity.Data;
+﻿using Business.Interface;
 using Microsoft.Extensions.Logging; 
 using Repository.DTO;
 using Repository.Interface;
@@ -23,7 +16,7 @@ namespace Business.Service
             _logger = logger;
         }
 
-        public async Task<ResponseDto<string>> RegisterUserAsync(UserRequest request)
+        public async Task<ResponseDto<string>> RegisterUserAsync(UserRequestDto request)
         {
             _logger.LogInformation("RegisterUserAsync called.");
             try
@@ -51,7 +44,7 @@ namespace Business.Service
             }
         }
 
-        public async Task<ResponseDto<List<UserResponse>>> GetAllUsersAsync()
+        public async Task<ResponseDto<List<UserResponseDto>>> GetAllUsersAsync()
         {
             _logger.LogInformation("GetAllUsersAsync called.");
             try
@@ -93,7 +86,7 @@ namespace Business.Service
             }
         }
 
-        public async Task<ResponseDto<string>> ResetPasswordAsync(ResetPassword dto, string email)
+        public async Task<ResponseDto<string>> ResetPasswordAsync(ResetPasswordDto dto, string email)
         {
             _logger.LogInformation($"ResetPasswordAsync called for email: {email}");
             try

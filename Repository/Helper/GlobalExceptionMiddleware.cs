@@ -2,10 +2,7 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Repository.Helper.CustomExceptions;
-using System;
 using System.ComponentModel.DataAnnotations;
-using System.Net;
-using System.Threading.Tasks;
 
 namespace Repository.Helper
 {
@@ -37,8 +34,6 @@ namespace Repository.Helper
         private Task HandleExceptionAsync(HttpContext context, Exception exception)
         {
             context.Response.ContentType = "application/json";
-
-            // Handling different exceptions and setting appropriate status codes
             context.Response.StatusCode = exception switch
             {
                 UserNotFoundException => StatusCodes.Status404NotFound,

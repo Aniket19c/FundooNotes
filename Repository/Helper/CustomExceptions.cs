@@ -1,5 +1,4 @@
-﻿using System;
-
+﻿
 namespace Repository.Helper.CustomExceptions
 {
     public class UserAlreadyExistsException : Exception
