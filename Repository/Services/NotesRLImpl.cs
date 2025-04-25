@@ -32,16 +32,44 @@ namespace Repository.Services
 
         private async Task<NotesEntity> GetNoteIfAuthorizedAsync(int noteId, int userId)
         {
+            string cacheKey = $"Note_{noteId}_User_{userId}";
+            var cachedData = await _cache.GetStringAsync(cacheKey);
+
+            if (!string.IsNullOrEmpty(cachedData))
+            {
+                return JsonSerializer.Deserialize<NotesEntity>(cachedData);
+            }
+
             var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
-            if (note != null) return note;
+            if (note != null)
+            {
+                await CacheNoteAsync(note, cacheKey);
+                return note;
+            }
 
             var isCollaborator = await _context.Collaborators
                 .AnyAsync(c => c.NoteId == noteId && c.UserId == userId);
 
             if (isCollaborator)
-                return await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId);
+            {
+                note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId);
+                if (note != null)
+                {
+                    await CacheNoteAsync(note, cacheKey);
+                }
+                return note;
+            }
 
             throw new NotesNotFoundException();
+        }
+
+        private async Task CacheNoteAsync(NotesEntity note, string cacheKey)
+        {
+            var serializedNote = JsonSerializer.Serialize(note);
+            await _cache.SetStringAsync(cacheKey, serializedNote, new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+            });
         }
 
         public async Task<ResponseDto<NotesEntity>> CreateNotesAsync(CreateNoteDto noteDto, int userId)
@@ -65,7 +93,7 @@ namespace Repository.Services
 
                 _context.Notes.Add(note);
                 await _context.SaveChangesAsync();
-                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+                await InvalidateUserNotesCache(userId);
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -161,7 +189,9 @@ namespace Repository.Services
                 note.Description = updatedNote.Description;
                 note.Edited = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+
+                await InvalidateUserNotesCache(userId);
+                await InvalidateSingleNoteCache(noteId, userId);
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -184,7 +214,9 @@ namespace Repository.Services
                 var note = await GetNoteIfAuthorizedAsync(noteId, userId);
                 _context.Notes.Remove(note);
                 await _context.SaveChangesAsync();
-                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+
+                await InvalidateUserNotesCache(userId);
+                await InvalidateSingleNoteCache(noteId, userId);
 
                 return new ResponseDto<string>
                 {
@@ -234,6 +266,9 @@ namespace Repository.Services
                 note.Backgroundcolor = color;
                 await _context.SaveChangesAsync();
 
+                await InvalidateUserNotesCache(note.UserId);
+                await InvalidateSingleNoteCache(noteId, note.UserId);
+
                 return new ResponseDto<string>
                 {
                     success = true,
@@ -260,7 +295,9 @@ namespace Repository.Services
                 }
                 note.Image = filePath;
                 await _context.SaveChangesAsync();
-                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+
+                await InvalidateUserNotesCache(userId);
+                await InvalidateSingleNoteCache(noteId, userId);
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -288,7 +325,8 @@ namespace Repository.Services
                     await _context.SaveChangesAsync();
                 }
 
-                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+                await InvalidateUserNotesCache(userId);
+                await InvalidateSingleNoteCache(noteId, userId);
 
                 return new ResponseDto<string>
                 {
@@ -308,11 +346,12 @@ namespace Repository.Services
             try
             {
                 var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == dto.NoteId && n.UserId == userId);
-                if (note == null) 
-                    return new ResponseDto<string> { 
-                    success = false, 
-                    message = "Note not found or user doesn't have access to this note"
-                };
+                if (note == null)
+                    return new ResponseDto<string>
+                    {
+                        success = false,
+                        message = "Note not found or user doesn't have access to this note"
+                    };
 
                 var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.CollaboratorEmail);
                 if (user == null) return new ResponseDto<string> { success = false, message = "Collaborator not found" };
@@ -320,13 +359,19 @@ namespace Repository.Services
                 var existingCollaborator = await _context.Collaborators.FirstOrDefaultAsync(c => c.NoteId == dto.NoteId && c.UserId == user.ID);
                 if (existingCollaborator != null) return new ResponseDto<string> { success = false, message = "Collaborator is already added to this note" };
 
-                var collaborator = new CollaboratorEntity {
-                    NoteId = dto.NoteId, 
-                    UserId = user.ID, 
-                    CollaboratorEmail = dto.CollaboratorEmail 
+                var collaborator = new CollaboratorEntity
+                {
+                    NoteId = dto.NoteId,
+                    UserId = user.ID,
+                    CollaboratorEmail = dto.CollaboratorEmail
                 };
                 await _context.Collaborators.AddAsync(collaborator);
                 await _context.SaveChangesAsync();
+
+                await InvalidateUserNotesCache(userId);
+                await InvalidateUserNotesCache(user.ID);
+                await InvalidateSingleNoteCache(dto.NoteId, userId);
+                await _cache.RemoveAsync($"Collaborators_Note_{dto.NoteId}");
 
                 return new ResponseDto<string> { success = true, message = "Collaborator added successfully" };
             }
@@ -337,16 +382,77 @@ namespace Repository.Services
             }
         }
 
+        public async Task<ResponseDto<List<CollaboratorEntity>>> GetCollaboratorsByNoteIdAsync(int noteId)
+        {
+            try
+            {
+                string cacheKey = $"Collaborators_Note_{noteId}";
+                List<CollaboratorEntity> collaborators;
+                var cachedData = await _cache.GetStringAsync(cacheKey);
+
+                if (!string.IsNullOrEmpty(cachedData))
+                {
+                    
+                    collaborators = JsonSerializer.Deserialize<List<CollaboratorEntity>>(cachedData);
+                    _logger.LogInformation($"Retrieved {collaborators?.Count ?? 0} collaborators for note {noteId} from cache");
+                }
+                else
+                {
+                    
+                    collaborators = await _context.Collaborators
+                        .Where(c => c.NoteId == noteId)
+                        .ToListAsync(); 
+
+                    if (collaborators == null || !collaborators.Any())
+                    {
+                        _logger.LogInformation($"No collaborators found for note {noteId}");
+                        return new ResponseDto<List<CollaboratorEntity>>
+                        {
+                            success = true,
+                            message = "No collaborators found for this note",
+                            data = new List<CollaboratorEntity>() 
+                        };
+                    }
+
+                    var serializedCollaborators = JsonSerializer.Serialize(collaborators);
+                    await _cache.SetStringAsync(cacheKey, serializedCollaborators, new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+                    });
+
+                    _logger.LogInformation($"Retrieved {collaborators.Count} collaborators for note {noteId} from database");
+                }
+
+                return new ResponseDto<List<CollaboratorEntity>>
+                {
+                    success = true,
+                    message = "Collaborators retrieved successfully",
+                    data = collaborators 
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error retrieving collaborators for note {noteId}");
+                return new ResponseDto<List<CollaboratorEntity>>
+                {
+                    success = false,
+                    message = $"An error occurred while retrieving collaborators: {ex.Message}",
+                    data = null
+                };
+            }
+        }
+
         public async Task<ResponseDto<string>> RemoveCollaboratorAsync(CollaboratorDto dto, int userId)
         {
             try
             {
                 var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == dto.NoteId && n.UserId == userId);
                 if (note == null)
-                    return new ResponseDto<string> {
-                    success = false, 
-                    message = "Note not found or user doesn't have access to this note" 
-                };
+                    return new ResponseDto<string>
+                    {
+                        success = false,
+                        message = "Note not found or user doesn't have access to this note"
+                    };
 
                 var collaborator = await _context.Collaborators
                     .FirstOrDefaultAsync(c => c.NoteId == dto.NoteId && c.CollaboratorEmail == dto.CollaboratorEmail);
@@ -355,6 +461,12 @@ namespace Repository.Services
                 _context.Collaborators.Remove(collaborator);
                 await _context.SaveChangesAsync();
 
+                await InvalidateUserNotesCache(userId);
+                await InvalidateUserNotesCache(collaborator.UserId);
+                await InvalidateSingleNoteCache(dto.NoteId, userId);
+                await _cache.RemoveAsync($"Collaborators_Note_{dto.NoteId}");
+
+
                 return new ResponseDto<string> { success = true, message = "Collaborator removed successfully" };
             }
             catch (Exception ex)
@@ -362,6 +474,148 @@ namespace Repository.Services
                 _logger.LogError(ex, "Error in RemoveCollaboratorAsync method");
                 return new ResponseDto<string> { success = false, message = "An error occurred while removing the collaborator" };
             }
+        }
+
+        public async Task<ResponseDto<LabelEntity>> AddLabelAsync(LabelDto labelDto, int userId)
+        {
+            try
+            {
+                _logger.LogInformation($"Attempting to add label for User ID: {userId}");
+
+                
+                var label = new LabelEntity
+                {
+                    LabelName = labelDto.LabelName,
+                    NoteId = labelDto.NoteId,
+                    UserId = userId
+                };
+
+               
+                _context.Labels.Add(label);
+                await _context.SaveChangesAsync();
+
+               
+                await _cache.RemoveAsync($"Labels_User_{userId}"); 
+                await InvalidateUserNotesCache(userId); 
+                if (labelDto.NoteId.HasValue)
+                {
+                    await InvalidateSingleNoteCache(labelDto.NoteId.Value, userId); 
+                }
+
+                _logger.LogInformation($"Label added successfully for User ID: {userId}, Label ID: {label.LabelId}");
+
+                return new ResponseDto<LabelEntity>
+                {
+                    success = true,
+                    message = "Label added successfully",
+                    data = label
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"AddLabelAsync failed for User ID: {userId} with Error: {ex.Message}");
+                return new ResponseDto<LabelEntity> { success = false, message = "An error occurred while adding the label" };
+            }
+        }
+
+
+        public async Task<ResponseDto<string>> DeleteLabelAsync(int labelId, int userId)
+        {
+            try
+            {
+                _logger.LogInformation($"Attempting to delete label ID: {labelId} for User ID: {userId}");
+
+               
+                var label = await _context.Labels.FirstOrDefaultAsync(l => l.LabelId == labelId && l.UserId == userId);
+                if (label == null)
+                {
+                    _logger.LogWarning($"Label ID: {labelId} not found for User ID: {userId}");
+                    return new ResponseDto<string> { success = false, message = "Label not found" };
+                }
+
+                var noteId = label.NoteId;
+
+                
+                _context.Labels.Remove(label);
+                await _context.SaveChangesAsync();
+
+                await _cache.RemoveAsync($"Labels_User_{userId}");
+
+               
+                await InvalidateUserNotesCache(userId);
+
+               
+                if (noteId.HasValue)
+                {
+                    await InvalidateSingleNoteCache(noteId.Value, userId);
+                }
+
+                _logger.LogInformation($"Label ID: {labelId} deleted successfully for User ID: {userId}");
+
+                return new ResponseDto<string>
+                {
+                    success = true,
+                    message = "Label deleted successfully",
+                    data = $"Deleted label ID: {labelId}"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"DeleteLabelAsync failed for Label ID: {labelId}, User ID: {userId} with Error: {ex.Message}");
+                return new ResponseDto<string> { success = false, message = "An error occurred while deleting the label" };
+            }
+        }
+
+        public async Task<ResponseDto<IEnumerable<LabelEntity>>> GetLabelsAsync(int userId)
+        {
+            try
+            {
+                string cacheKey = $"Labels_User_{userId}";
+                var cachedData = await _cache.GetStringAsync(cacheKey);
+                List<LabelEntity> labels;
+
+                if (!string.IsNullOrEmpty(cachedData))
+                {
+                    labels = JsonSerializer.Deserialize<List<LabelEntity>>(cachedData);
+                }
+                else
+                {
+                    _logger.LogInformation($"Fetching labels for User ID: {userId}");
+                    labels = await _context.Labels
+                        .Where(l => l.UserId == userId)
+                        .ToListAsync();
+
+                    var serializedLabels = JsonSerializer.Serialize(labels);
+                    await _cache.SetStringAsync(cacheKey, serializedLabels, new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
+                    });
+
+                    _logger.LogInformation($"Fetched {labels.Count} labels for User ID: {userId}");
+                }
+
+                return new ResponseDto<IEnumerable<LabelEntity>>
+                {
+                    success = true,
+                    message = "Labels fetched successfully",
+                    data = labels
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"GetLabelsAsync failed for User ID: {userId} with Error: {ex.Message}");
+                throw;
+            }
+        }
+
+        private async Task InvalidateUserNotesCache(int userId)
+        {
+            await _cache.RemoveAsync($"AllNotes_User_{userId}");
+        }
+
+        private async Task InvalidateSingleNoteCache(int noteId, int userId)
+        {
+            await _cache.RemoveAsync($"Note_{noteId}_User_{userId}");
         }
     }
 }

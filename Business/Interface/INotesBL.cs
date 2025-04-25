@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Models.Entity;
 using Repository.DTO;
+using Repository.Entity;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -22,7 +23,11 @@ namespace Business.Interface
         Task<ResponseDto<string>> RestoreNoteAsync(int noteId, int userId);
 
         Task<ResponseDto<string>> AddCollaboratorAsync(CollaboratorDto dto, int userId);
+        Task<ResponseDto<List<CollaboratorEntity>>> GetCollaboratorsByNoteIdAsync(int noteId);
         Task<ResponseDto<string>> RemoveCollaboratorAsync(CollaboratorDto dto, int userId);
+        Task<ResponseDto<LabelEntity>> AddLabelAsync(LabelDto labelDto, int userId);
+        Task<ResponseDto<string>> DeleteLabelAsync(int labelId, int userId);
+        Task<ResponseDto<IEnumerable<LabelEntity>>> GetLabelsAsync(int userId);
 
 
 

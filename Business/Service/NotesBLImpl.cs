@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Repository.Entity;
 
 namespace Business.Services
 {
@@ -176,6 +177,7 @@ namespace Business.Services
                 throw;
             }
         }
+
         public async Task<ResponseDto<string>> AddCollaboratorAsync(CollaboratorDto dto, int userId)
         {
             try
@@ -189,11 +191,23 @@ namespace Business.Services
             }
         }
 
+        public async Task<ResponseDto<List<CollaboratorEntity>>> GetCollaboratorsByNoteIdAsync(int noteId)
+        {
+            try
+            {
+                return await _notesRL.GetCollaboratorsByNoteIdAsync(noteId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GetCollaboratorsByNoteIdAsync method");
+                throw;
+            }
+        }
+
         public async Task<ResponseDto<string>> RemoveCollaboratorAsync(CollaboratorDto dto, int userId)
         {
             try
             {
-                
                 return await _notesRL.RemoveCollaboratorAsync(dto, userId);
             }
             catch (Exception ex)
@@ -203,7 +217,43 @@ namespace Business.Services
             }
         }
 
+        public async Task<ResponseDto<LabelEntity>> AddLabelAsync(LabelDto labelDto, int userId)
+        {
+            try
+            {
+                return await _notesRL.AddLabelAsync(labelDto, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in AddLabelAsync method");
+                throw;
+            }
+        }
 
+        public async Task<ResponseDto<string>> DeleteLabelAsync(int labelId, int userId)
+        {
+            try
+            {
+                return await _notesRL.DeleteLabelAsync(labelId, userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in DeleteLabelAsync method");
+                throw;
+            }
+        }
 
+        public async Task<ResponseDto<IEnumerable<LabelEntity>>> GetLabelsAsync(int userId)
+        {
+            try
+            {
+                return await _notesRL.GetLabelsAsync(userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GetLabelsAsync method");
+                throw;
+            }
+        }
     }
 }
