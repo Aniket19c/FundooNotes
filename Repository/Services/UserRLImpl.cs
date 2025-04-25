@@ -207,7 +207,7 @@ namespace Repository.Services
         {
             try
             {
-                _logger.LogInformation($"Sending OTP to: {email}");
+                _logger.LogInformation($"Sending token to: {email}");
                 var user = await _context.Users.SingleOrDefaultAsync(u => u.Email == email);
                 if (user == null)
                 {
@@ -215,16 +215,17 @@ namespace Repository.Services
                     throw new UserNotFoundException("Email not registered.");
                 }
 
-                var otp = new Random().Next(100000, 999999).ToString();
+                //var otp = new Random().Next(100000, 999999).ToString();
+                var token = _jwtHelper.GenerateToken(user.Email, user.ID);
 
-                _producer.SendOtpQueue(email, otp);
+                _producer.SendOtpQueue(email, token);
                 _consumer.Consume();
 
                 _logger.LogInformation("OTP sent successfully");
                 return new ResponseDto<string>
                 {
                     success = true,
-                    message = "OTP sent to your email address.",
+                    message = "token sent to your email address.",
                     data = null
                 };
             }
