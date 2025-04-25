@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Models.Entity;
+using Newtonsoft.Json;
 using Repository.Context;
 using Repository.DTO;
 using Repository.Entity;
@@ -14,6 +15,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Repository.Services
 {
@@ -65,7 +67,7 @@ namespace Repository.Services
 
         private async Task CacheNoteAsync(NotesEntity note, string cacheKey)
         {
-            var serializedNote = JsonSerializer.Serialize(note);
+            var serializedNote = System.Text.Json.JsonSerializer.Serialize(note);
             await _cache.SetStringAsync(cacheKey, serializedNote, new DistributedCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
@@ -93,7 +95,20 @@ namespace Repository.Services
 
                 _context.Notes.Add(note);
                 await _context.SaveChangesAsync();
-                await InvalidateUserNotesCache(userId);
+
+              
+                await InvalidateUserNotesCache(userId);   
+                await InvalidateSingleNoteCache(note.NoteId, userId);  
+
+                var allNotes = await _context.Notes.Where(n => n.UserId == userId).ToListAsync();
+                var serializedNotes = JsonConvert.SerializeObject(allNotes);
+
+                var cacheKey = $"AllNotes_User_{userId}";
+                var expiration = TimeSpan.FromMinutes(10); 
+                await _cache.SetStringAsync(cacheKey, serializedNotes, new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = expiration
+                });
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -114,6 +129,7 @@ namespace Repository.Services
                 };
             }
         }
+
 
         public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(int noteId, int userId)
         {
