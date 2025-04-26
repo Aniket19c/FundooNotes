@@ -8,7 +8,6 @@ using Repository.Context;
 using Repository.DTO;
 using Repository.Helper.CustomExceptions;
 using Repository.Interface;
-using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Repository.Services
 {
@@ -32,7 +31,7 @@ namespace Repository.Services
 
             if (!string.IsNullOrEmpty(cachedData))
             {
-                return JsonSerializer.Deserialize<NotesEntity>(cachedData);
+                return JsonConvert.DeserializeObject<NotesEntity>(cachedData);
             }
 
             var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
@@ -60,7 +59,7 @@ namespace Repository.Services
 
         private async Task CacheNoteAsync(NotesEntity note, string cacheKey)
         {
-            var serializedNote = System.Text.Json.JsonSerializer.Serialize(note);
+            var serializedNote = JsonConvert.SerializeObject(note);
             await _cache.SetStringAsync(cacheKey, serializedNote, new DistributedCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
@@ -89,19 +88,9 @@ namespace Repository.Services
                 _context.Notes.Add(note);
                 await _context.SaveChangesAsync();
 
-              
-                await InvalidateUserNotesCache(userId);   
-                await InvalidateSingleNoteCache(note.NoteId, userId);  
-
-                var allNotes = await _context.Notes.Where(n => n.UserId == userId).ToListAsync();
-                var serializedNotes = JsonConvert.SerializeObject(allNotes);
-
-                var cacheKey = $"AllNotes_User_{userId}";
-                var expiration = TimeSpan.FromMinutes(10); 
-                await _cache.SetStringAsync(cacheKey, serializedNotes, new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = expiration
-                });
+                
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+                await _cache.RemoveAsync($"Note_{note.NoteId}_User_{userId}");
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -112,28 +101,50 @@ namespace Repository.Services
             }
             catch (Exception ex)
             {
-                var errorMessage = ex.InnerException?.Message ?? ex.Message;
                 _logger.LogError(ex, "Error creating note for UserId {UserId}", userId);
                 return new ResponseDto<NotesEntity>
                 {
                     success = false,
-                    message = $"Failed to create note: {errorMessage}",
+                    message = $"Failed to create note: {ex.Message}",
                     data = null
                 };
             }
         }
 
-
-        public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(int noteId, int userId)
+        public async Task<ResponseDto<NotesResponseDto>> RetrieveNotesAsync(int noteId, int userId)
         {
             try
             {
-                var note = await GetNoteIfAuthorizedAsync(noteId, userId);
-                return new ResponseDto<List<NotesEntity>>
+                var noteEntity = await GetNoteIfAuthorizedAsync(noteId, userId);
+
+                if (noteEntity == null)
+                {
+                    return new ResponseDto<NotesResponseDto>
+                    {
+                        success = false,
+                        message = "Note not found",
+                        data = null
+                    };
+                }
+
+                var noteResponse = new NotesResponseDto
+                {
+                    NoteId = noteEntity.NoteId,
+                    Title = noteEntity.Title,
+                    Description = noteEntity.Description,
+                    Reminder = noteEntity.Reminder,
+                    BackgroundColor = noteEntity.Backgroundcolor,
+                    Image = noteEntity.Image,
+                    Pin = noteEntity.Pin,
+                    Archieve = noteEntity.Archieve,
+                    Trash = noteEntity.Trash
+                };
+
+                return new ResponseDto<NotesResponseDto>
                 {
                     success = true,
                     message = "Note retrieved successfully",
-                    data = new List<NotesEntity> { note }
+                    data = noteResponse
                 };
             }
             catch (Exception ex)
@@ -143,43 +154,70 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<List<NotesEntity>>> RetrieveAllNotesAsync(int userId)
+        public async Task<ResponseDto<List<NotesResponseDto>>> RetrieveAllNotesAsync(int userId)
         {
             try
             {
                 string cacheKey = $"AllNotes_User_{userId}";
-                List<NotesEntity> notes;
                 var cachedData = await _cache.GetStringAsync(cacheKey);
 
                 if (!string.IsNullOrEmpty(cachedData))
                 {
-                    notes = JsonSerializer.Deserialize<List<NotesEntity>>(cachedData);
+                    var cachedNotes = JsonConvert.DeserializeObject<List<NotesEntity>>(cachedData);
+                    return new ResponseDto<List<NotesResponseDto>>
+                    {
+                        success = true,
+                        message = "All notes retrieved successfully (from cache)",
+                        data = cachedNotes.Select(n => new NotesResponseDto
+                        {
+                            NoteId = n.NoteId,
+                            Title = n.Title,
+                            Description = n.Description,
+                            Reminder = n.Reminder,
+                            BackgroundColor = n.Backgroundcolor,
+                            Image = n.Image,
+                            Pin = n.Pin,
+                            Archieve = n.Archieve,
+                            Trash = n.Trash
+                        }).ToList()
+                    };
                 }
-                else
-                {
-                    var userNotes = await _context.Notes.Where(n => n.UserId == userId).ToListAsync();
-                    var collaboratorNoteIds = await _context.Collaborators
-                        .Where(c => c.UserId == userId)
-                        .Select(c => c.NoteId)
-                        .ToListAsync();
-                    var collaboratorNotes = await _context.Notes
-                        .Where(n => collaboratorNoteIds.Contains(n.NoteId))
-                        .ToListAsync();
 
-                    notes = userNotes.Concat(collaboratorNotes).ToList();
+                var userNotes = await _context.Notes.Where(n => n.UserId == userId).ToListAsync();
+                var collaboratorNoteIds = await _context.Collaborators
+                    .Where(c => c.UserId == userId)
+                    .Select(c => c.NoteId)
+                    .ToListAsync();
+                var collaboratorNotes = await _context.Notes
+                    .Where(n => collaboratorNoteIds.Contains(n.NoteId))
+                    .ToListAsync();
 
-                    var serializedNotes = JsonSerializer.Serialize(notes);
-                    await _cache.SetStringAsync(cacheKey, serializedNotes, new DistributedCacheEntryOptions
+                var allNotes = userNotes.Concat(collaboratorNotes).ToList();
+
+               
+                await _cache.SetStringAsync(cacheKey,
+                    JsonConvert.SerializeObject(allNotes),
+                    new DistributedCacheEntryOptions
                     {
                         AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
                     });
-                }
 
-                return new ResponseDto<List<NotesEntity>>
+                return new ResponseDto<List<NotesResponseDto>>
                 {
                     success = true,
                     message = "All notes retrieved successfully",
-                    data = notes
+                    data = allNotes.Select(n => new NotesResponseDto
+                    {
+                        NoteId = n.NoteId,
+                        Title = n.Title,
+                        Description = n.Description,
+                        Reminder = n.Reminder,
+                        BackgroundColor = n.Backgroundcolor,
+                        Image = n.Image,
+                        Pin = n.Pin,
+                        Archieve = n.Archieve,
+                        Trash = n.Trash
+                    }).ToList()
                 };
             }
             catch (Exception ex)
@@ -189,7 +227,7 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<NotesEntity>> UpdateNotesAsync(int userId, int noteId, NotesEntity updatedNote)
+        public async Task<ResponseDto<NotesResponseDto>> UpdateNotesAsync(int userId, int noteId, NotesEntity updatedNote)
         {
             try
             {
@@ -199,14 +237,27 @@ namespace Repository.Services
                 note.Edited = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
-                await InvalidateUserNotesCache(userId);
-                await InvalidateSingleNoteCache(noteId, userId);
+                
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+                await _cache.RemoveAsync($"Note_{noteId}_User_{userId}");
+                var notesResponseDto = new NotesResponseDto
+                {
+                    NoteId = note.NoteId,
+                    Title = note.Title,
+                    Description = note.Description,
+                    Reminder = note.Reminder,
+                    BackgroundColor = note.Backgroundcolor,
+                    Image = note.Image,
+                    Pin = note.Pin,
+                    Archieve = note.Archieve,
+                    Trash = note.Trash
+                };
 
-                return new ResponseDto<NotesEntity>
+                return new ResponseDto<NotesResponseDto>
                 {
                     success = true,
                     message = "Note updated successfully",
-                    data = note
+                    data = notesResponseDto
                 };
             }
             catch (Exception ex)
@@ -224,8 +275,9 @@ namespace Repository.Services
                 _context.Notes.Remove(note);
                 await _context.SaveChangesAsync();
 
-                await InvalidateUserNotesCache(userId);
-                await InvalidateSingleNoteCache(noteId, userId);
+                
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+                await _cache.RemoveAsync($"Note_{noteId}_User_{userId}");
 
                 return new ResponseDto<string>
                 {
@@ -242,12 +294,12 @@ namespace Repository.Services
 
         public async Task<ResponseDto<string>> TrashNoteAsync(int noteId, int userId)
         {
-            return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Trash), true, "Note trashed successfully");
+            return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Trash), true, "Note moved to trash successfully");
         }
 
-        public async Task<ResponseDto<string>> PinNoteAsync(int noteId, int userId)
+        public async Task<ResponseDto<string>> RestoreNoteAsync(int noteId, int userId)
         {
-            return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Pin), true, "Note pinned successfully");
+            return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Trash), false, "Note restored from trash successfully");
         }
 
         public async Task<ResponseDto<string>> ArchiveNoteAsync(int userId, int noteId)
@@ -260,11 +312,36 @@ namespace Repository.Services
             return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Archieve), false, "Note unarchived successfully");
         }
 
-        public async Task<ResponseDto<string>> RestoreNoteAsync(int noteId, int userId)
+        public async Task<ResponseDto<string>> PinNoteAsync(int noteId, int userId)
         {
-            return await ToggleBooleanProperty(noteId, userId, nameof(NotesEntity.Trash), false, "Note restored from trash successfully");
-        }
+            try
+            {
+                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
+                if (note == null)
+                {
+                    throw new NotesNotFoundException();
+                }
 
+                note.Pin = !note.Pin;
+                note.Edited = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
+               
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+                await _cache.RemoveAsync($"Note_{noteId}_User_{userId}");
+
+                return new ResponseDto<string>
+                {
+                    success = true,
+                    message = note.Pin ? "Note pinned successfully" : "Note unpinned successfully"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error pinning/unpinning note {noteId}");
+                throw;
+            }
+        }
         public async Task<ResponseDto<string>> BackgroundColorNoteAsync(int noteId, string color)
         {
             try
@@ -275,8 +352,9 @@ namespace Repository.Services
                 note.Backgroundcolor = color;
                 await _context.SaveChangesAsync();
 
-                await InvalidateUserNotesCache(note.UserId);
-                await InvalidateSingleNoteCache(noteId, note.UserId);
+                
+                await _cache.RemoveAsync($"AllNotes_User_{note.UserId}");
+                await _cache.RemoveAsync($"Note_{noteId}_User_{note.UserId}");
 
                 return new ResponseDto<string>
                 {
@@ -305,8 +383,9 @@ namespace Repository.Services
                 note.Image = filePath;
                 await _context.SaveChangesAsync();
 
-                await InvalidateUserNotesCache(userId);
-                await InvalidateSingleNoteCache(noteId, userId);
+                
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+                await _cache.RemoveAsync($"Note_{noteId}_User_{userId}");
 
                 return new ResponseDto<NotesEntity>
                 {
@@ -321,21 +400,28 @@ namespace Repository.Services
                 throw;
             }
         }
-
         private async Task<ResponseDto<string>> ToggleBooleanProperty(int noteId, int userId, string propertyName, bool value, string successMessage)
         {
             try
             {
-                var note = await GetNoteIfAuthorizedAsync(noteId, userId);
+                var note = await _context.Notes.FirstOrDefaultAsync(n => n.NoteId == noteId && n.UserId == userId);
+                if (note == null)
+                {
+                    throw new NotesNotFoundException();
+                }
+
+              
                 var propertyInfo = typeof(NotesEntity).GetProperty(propertyName);
                 if (propertyInfo != null)
                 {
                     propertyInfo.SetValue(note, value);
-                    await _context.SaveChangesAsync();
+                    note.Edited = DateTime.UtcNow; 
+                    await _context.SaveChangesAsync(); 
                 }
 
-                await InvalidateUserNotesCache(userId);
-                await InvalidateSingleNoteCache(noteId, userId);
+               
+                await _cache.RemoveAsync($"AllNotes_User_{userId}");
+                await _cache.RemoveAsync($"Note_{noteId}_User_{userId}");
 
                 return new ResponseDto<string>
                 {
@@ -345,19 +431,11 @@ namespace Repository.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error toggling {propertyName}");
+                _logger.LogError(ex, $"Error toggling {propertyName} for note {noteId}");
                 throw;
             }
         }
 
-        private async Task InvalidateUserNotesCache(int userId)
-        {
-            await _cache.RemoveAsync($"AllNotes_User_{userId}");
-        }
 
-        private async Task InvalidateSingleNoteCache(int noteId, int userId)
-        {
-            await _cache.RemoveAsync($"Note_{noteId}_User_{userId}");
-        }
     }
 }

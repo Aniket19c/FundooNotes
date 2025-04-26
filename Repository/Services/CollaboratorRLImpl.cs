@@ -46,6 +46,7 @@ namespace Repository.Services
                     NoteId = dto.NoteId,
                     UserId = user.ID,
                     CollaboratorEmail = dto.CollaboratorEmail
+                    
                 };
                 await _context.Collaborators.AddAsync(collaborator);
                 await _context.SaveChangesAsync();

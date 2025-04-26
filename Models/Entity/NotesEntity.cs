@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Models.Entity
@@ -13,11 +14,18 @@ namespace Models.Entity
         public DateTime? Reminder { get; set; }
         public string? Backgroundcolor { get; set; }
         public string? Image { get; set; }
+
+        [DefaultValue(false)]
         public bool Pin { get; set; }
+
         public DateTime Created { get; set; }
         public DateTime Edited { get; set; }
+
+        [DefaultValue(false)]
         public bool Trash { get; set; }
-        public bool Archieve { get; set; }
+
+        [DefaultValue(false)]
+        public bool Archieve { get; set; } 
         public int UserId { get; set; }
 
         [ForeignKey("UserId")]

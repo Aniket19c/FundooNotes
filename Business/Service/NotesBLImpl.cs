@@ -31,7 +31,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(int noteId, int userId)
+        public async Task<ResponseDto<NotesResponseDto>> RetrieveNotesAsync(int noteId, int userId)
         {
             try
             {
@@ -44,7 +44,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<List<NotesEntity>>> RetrieveAllNotesAsync(int userId)
+        public async Task<ResponseDto<List<NotesResponseDto>>> RetrieveAllNotesAsync(int userId)
         {
             try
             {
@@ -57,7 +57,7 @@ namespace Business.Services
             }
         }
 
-        public async Task<ResponseDto<NotesEntity>> UpdateNotesAsync(int userId, int noteId, NotesEntity updatedNote)
+        public async Task<ResponseDto<NotesResponseDto>> UpdateNotesAsync(int userId, int noteId, NotesEntity updatedNote)
         {
             try
             {

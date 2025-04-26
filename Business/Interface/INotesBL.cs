@@ -6,9 +6,9 @@ namespace Business.Interface
     public interface INotesBL
     {
         Task<ResponseDto<NotesEntity>> CreateNotesAsync(CreateNoteDto noteDto, int userId);
-        Task<ResponseDto<List<NotesEntity>>> RetrieveNotesAsync(int noteId, int userId);
-        Task<ResponseDto<List<NotesEntity>>> RetrieveAllNotesAsync(int userId);
-        Task<ResponseDto<NotesEntity>> UpdateNotesAsync(int userId, int noteId, NotesEntity updatedNote);
+        Task<ResponseDto<NotesResponseDto>> RetrieveNotesAsync(int noteId, int userId);
+        Task<ResponseDto<List<NotesResponseDto>>> RetrieveAllNotesAsync(int userId);
+        Task<ResponseDto<NotesResponseDto>> UpdateNotesAsync(int userId, int noteId, NotesEntity updatedNote);
         Task<ResponseDto<string>> DeleteNoteAsync(int userId, int noteId);
         Task<ResponseDto<string>> TrashNoteAsync(int noteId, int userId);
         Task<ResponseDto<string>> PinNoteAsync(int noteId, int userId);
