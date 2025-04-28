@@ -30,7 +30,7 @@ namespace Business.Service
             }
         }
 
-        public async Task<ResponseDto<List<CollaboratorEntity>>> GetCollaboratorsByNoteIdAsync(int noteId)
+        public async Task<ResponseDto<List<CollaboratorResponseDto>>> GetCollaboratorsByNoteIdAsync(int noteId)
         {
             try
             {

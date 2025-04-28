@@ -65,7 +65,7 @@ namespace Repository.Services
             }
         }
 
-        public async Task<ResponseDto<List<CollaboratorEntity>>> GetCollaboratorsByNoteIdAsync(int noteId)
+        public async Task<ResponseDto<List<CollaboratorResponseDto>>> GetCollaboratorsByNoteIdAsync(int noteId)
         {
             try
             {
@@ -75,13 +75,11 @@ namespace Repository.Services
 
                 if (!string.IsNullOrEmpty(cachedData))
                 {
-
                     collaborators = JsonSerializer.Deserialize<List<CollaboratorEntity>>(cachedData);
                     _logger.LogInformation($"Retrieved {collaborators?.Count ?? 0} collaborators for note {noteId} from cache");
                 }
                 else
                 {
-
                     collaborators = await _context.Collaborators
                         .Where(c => c.NoteId == noteId)
                         .ToListAsync();
@@ -89,11 +87,11 @@ namespace Repository.Services
                     if (collaborators == null || !collaborators.Any())
                     {
                         _logger.LogInformation($"No collaborators found for note {noteId}");
-                        return new ResponseDto<List<CollaboratorEntity>>
+                        return new ResponseDto<List<CollaboratorResponseDto>>
                         {
                             success = true,
                             message = "No collaborators found for this note",
-                            data = new List<CollaboratorEntity>()
+                            data = new List<CollaboratorResponseDto>()
                         };
                     }
 
@@ -106,17 +104,24 @@ namespace Repository.Services
                     _logger.LogInformation($"Retrieved {collaborators.Count} collaborators for note {noteId} from database");
                 }
 
-                return new ResponseDto<List<CollaboratorEntity>>
+                var responseData = collaborators.Select(c => new CollaboratorResponseDto
+                {
+                    CollaboratorId = c.CollaboratorId,
+                    CollaboratorEmail = c.CollaboratorEmail,
+                    NoteId = c.NoteId
+                }).ToList();
+
+                return new ResponseDto<List<CollaboratorResponseDto>>
                 {
                     success = true,
                     message = "Collaborators retrieved successfully",
-                    data = collaborators
+                    data = responseData
                 };
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, $"Error retrieving collaborators for note {noteId}");
-                return new ResponseDto<List<CollaboratorEntity>>
+                return new ResponseDto<List<CollaboratorResponseDto>>
                 {
                     success = false,
                     message = $"An error occurred while retrieving collaborators: {ex.Message}",
@@ -124,6 +129,7 @@ namespace Repository.Services
                 };
             }
         }
+
 
         public async Task<ResponseDto<string>> RemoveCollaboratorAsync(CollaboratorDto dto, int userId)
         {

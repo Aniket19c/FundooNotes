@@ -22,37 +22,36 @@ namespace Repository.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("LabelEntity", b =>
+            modelBuilder.Entity("Models.Entity.UserEntity", b =>
                 {
-                    b.Property<int>("LabelId")
+                    b.Property<int>("ID")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("LabelId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ID"));
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("LabelName")
+                    b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int?>("NoteId")
-                        .HasColumnType("int");
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("UserId")
-                        .HasColumnType("int");
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("LabelId");
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                    b.HasIndex("NoteId");
+                    b.HasKey("ID");
 
-                    b.HasIndex("UserId");
-
-                    b.ToTable("Labels");
+                    b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("Models.Entity.NotesEntity", b =>
+            modelBuilder.Entity("NotesEntity", b =>
                 {
                     b.Property<int>("NoteId")
                         .ValueGeneratedOnAdd()
@@ -100,35 +99,6 @@ namespace Repository.Migrations
                     b.ToTable("Notes");
                 });
 
-            modelBuilder.Entity("Models.Entity.UserEntity", b =>
-                {
-                    b.Property<int>("ID")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ID"));
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Password")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("ID");
-
-                    b.ToTable("Users");
-                });
-
             modelBuilder.Entity("Repository.Entity.CollaboratorEntity", b =>
                 {
                     b.Property<int>("CollaboratorId")
@@ -156,24 +126,50 @@ namespace Repository.Migrations
                     b.ToTable("Collaborators");
                 });
 
-            modelBuilder.Entity("LabelEntity", b =>
+            modelBuilder.Entity("Repository.Entity.LabelEntity", b =>
                 {
-                    b.HasOne("Models.Entity.NotesEntity", "Notes")
-                        .WithMany()
-                        .HasForeignKey("NoteId");
+                    b.Property<int>("LabelId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
 
-                    b.HasOne("Models.Entity.UserEntity", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("LabelId"));
 
-                    b.Navigation("Notes");
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
 
-                    b.Navigation("User");
+                    b.Property<string>("LabelName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("LabelId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Labels");
                 });
 
-            modelBuilder.Entity("Models.Entity.NotesEntity", b =>
+            modelBuilder.Entity("Repository.Entity.NoteLabelEntity", b =>
+                {
+                    b.Property<int>("NoteId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LabelId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("NoteLabelId")
+                        .HasColumnType("int");
+
+                    b.HasKey("NoteId", "LabelId");
+
+                    b.HasIndex("LabelId");
+
+                    b.ToTable("NoteLabels");
+                });
+
+            modelBuilder.Entity("NotesEntity", b =>
                 {
                     b.HasOne("Models.Entity.UserEntity", "User")
                         .WithMany("Notes")
@@ -186,7 +182,7 @@ namespace Repository.Migrations
 
             modelBuilder.Entity("Repository.Entity.CollaboratorEntity", b =>
                 {
-                    b.HasOne("Models.Entity.NotesEntity", "Note")
+                    b.HasOne("NotesEntity", "Note")
                         .WithMany()
                         .HasForeignKey("NoteId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -203,11 +199,51 @@ namespace Repository.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Repository.Entity.LabelEntity", b =>
+                {
+                    b.HasOne("Models.Entity.UserEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Repository.Entity.NoteLabelEntity", b =>
+                {
+                    b.HasOne("Repository.Entity.LabelEntity", "Label")
+                        .WithMany("NoteLabels")
+                        .HasForeignKey("LabelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NotesEntity", "Note")
+                        .WithMany("NoteLabels")
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Label");
+
+                    b.Navigation("Note");
+                });
+
             modelBuilder.Entity("Models.Entity.UserEntity", b =>
                 {
                     b.Navigation("Collaborators");
 
                     b.Navigation("Notes");
+                });
+
+            modelBuilder.Entity("NotesEntity", b =>
+                {
+                    b.Navigation("NoteLabels");
+                });
+
+            modelBuilder.Entity("Repository.Entity.LabelEntity", b =>
+                {
+                    b.Navigation("NoteLabels");
                 });
 #pragma warning restore 612, 618
         }
