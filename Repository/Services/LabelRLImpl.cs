@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using NLog;
 using Repository.Context;
 using Repository.DTO;
 using Repository.Entity;

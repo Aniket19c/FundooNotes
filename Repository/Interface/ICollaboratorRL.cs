@@ -1,5 +1,4 @@
 ﻿using Repository.DTO;
-using Repository.Entity;
 
 namespace Repository.Interface
 {

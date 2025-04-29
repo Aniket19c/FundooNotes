@@ -23,7 +23,9 @@ namespace Repository_Layer.Helper
             var claims = new[]
             {
                 new Claim(ClaimTypes.Email, email),
-                new Claim(ClaimTypes.NameIdentifier, id.ToString()),
+                //new Claim(ClaimTypes.NameIdentifier, id.ToString()),
+                new Claim("UserId", id.ToString()),
+
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 
