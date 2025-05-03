@@ -15,7 +15,7 @@ using Repository_Layer.Helper;
 using StackExchange.Redis;
 using System.Text;
 using System.Reflection;
-
+using Yarp.ReverseProxy; // ✅ Add YARP namespace
 
 namespace Fundoo_Notes
 {
@@ -31,30 +31,29 @@ namespace Fundoo_Notes
 
                 var builder = WebApplication.CreateBuilder(args);
 
-                //NLog 
+                // Logging
                 builder.Logging.ClearProviders();
                 builder.Logging.SetMinimumLevel(LogLevel.Information);
                 builder.Host.UseNLog();
 
-               
+                // Database
                 builder.Services.AddDbContext<UserContext>(options =>
                     options.UseSqlServer(builder.Configuration.GetConnectionString("CONNECTION")));
 
-               
+                // Redis
                 builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
                 {
-                    var configuration = builder.Configuration.GetSection("Redis")["Connection"];
+                    var configuration = builder.Configuration.GetConnectionString("Redis");
                     return ConnectionMultiplexer.Connect(configuration);
                 });
 
-                
                 builder.Services.AddStackExchangeRedisCache(options =>
                 {
                     options.Configuration = builder.Configuration.GetConnectionString("Redis");
                     options.InstanceName = "Fundoo_Notes_";
                 });
 
-
+                // DI Registrations
                 builder.Services.AddScoped<IUserRL, UserRLImpl>();
                 builder.Services.AddScoped<IUserBL, UserBLImpl>();
                 builder.Services.AddScoped<INotesRL, NotesRLImpl>();
@@ -68,7 +67,7 @@ namespace Fundoo_Notes
                 builder.Services.AddScoped<RabbitMqConsumer>();
                 builder.Services.AddScoped<RedisCacheService>();
 
-                
+                // JWT Auth
                 var jwtKey = builder.Configuration["Jwt:Key"];
                 var keyBytes = Encoding.UTF8.GetBytes(jwtKey);
 
@@ -91,14 +90,17 @@ namespace Fundoo_Notes
                     };
                 });
 
-                
                 builder.Services.AddControllers();
 
-                
+                // ✅ Add Reverse Proxy
+                builder.Services.AddReverseProxy()
+                    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
+                // Swagger
                 builder.Services.AddEndpointsApiExplorer();
                 builder.Services.AddSwaggerGen(options =>
                 {
-                    options.SwaggerDoc("v1", new OpenApiInfo { Title = "JWT Auth API", Version = "v1" });
+                    options.SwaggerDoc("v1", new OpenApiInfo { Title = "Fundoo Notes API", Version = "v1" });
 
                     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                     {
@@ -110,28 +112,26 @@ namespace Fundoo_Notes
                     });
 
                     options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = JwtBearerDefaults.AuthenticationScheme
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
+                    {
+                        {
+                            new OpenApiSecurityScheme
+                            {
+                                Reference = new OpenApiReference
+                                {
+                                    Type = ReferenceType.SecurityScheme,
+                                    Id = JwtBearerDefaults.AuthenticationScheme
+                                }
+                            },
+                            Array.Empty<string>()
+                        }
+                    });
 
-                    
                     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
                     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
                     options.IncludeXmlComments(xmlPath);
                 });
 
-
-                //CORS
+                // CORS
                 builder.Services.AddCors(options =>
                 {
                     options.AddPolicy("AllowAll", policy =>
@@ -142,31 +142,27 @@ namespace Fundoo_Notes
                     });
                 });
 
-                
                 var app = builder.Build();
 
-                
                 app.UseMiddleware<GlobalExceptionMiddleware>();
 
-               
                 if (app.Environment.IsDevelopment())
                 {
                     app.UseSwagger();
                     app.UseSwaggerUI();
                 }
 
-                
                 app.UseHttpsRedirection();
                 app.UseCors("AllowAll");
                 app.UseAuthentication();
                 app.UseAuthorization();
 
-             
-
+                //  Reverse Proxy
+                app.MapReverseProxy();
 
                 app.MapControllers();
 
-                //To run the Consumer in background 
+                // Run RabbitMQ Consumer
                 using (var scope = app.Services.CreateScope())
                 {
                     var consumer = scope.ServiceProvider.GetRequiredService<RabbitMqConsumer>();
