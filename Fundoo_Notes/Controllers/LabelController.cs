@@ -4,6 +4,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Fundoo_Notes.Controllers
 {
+    /// <summary>
+    /// Controller for managing labels associated with notes.
+    /// Requires authorized user.
+    /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
@@ -12,12 +16,23 @@ namespace Fundoo_Notes.Controllers
         private readonly ILabelBL _labelBL;
         private readonly ILogger<LabelController> _logger;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="LabelController"/> class.
+        /// </summary>
+        /// <param name="labelBL">Business logic interface for labels.</param>
+        /// <param name="logger">Logger instance for logging events.</param>
         public LabelController(ILabelBL labelBL, ILogger<LabelController> logger)
         {
             _labelBL = labelBL;
             _logger = logger;
         }
 
+        /// <summary>
+        /// Adds a new label or associates it with a note.
+        /// </summary>
+        /// <param name="labelName">Name of the label to add.</param>
+        /// <param name="noteId">Optional note ID to associate the label with.</param>
+        /// <returns>Result of the add label operation.</returns>
         [HttpPost("AddLabel")]
         public async Task<IActionResult> AddLabelAsync(string labelName, int? noteId = null)
         {
@@ -38,6 +53,12 @@ namespace Fundoo_Notes.Controllers
             }
         }
 
+        /// <summary>
+        /// Associates an existing note with an existing label.
+        /// </summary>
+        /// <param name="labelId">ID of the label.</param>
+        /// <param name="noteId">ID of the note.</param>
+        /// <returns>Result of the add note to label operation.</returns>
         [HttpPost("addNoteToLabel")]
         public async Task<IActionResult> AddNoteToLabel(int labelId, int noteId)
         {
@@ -46,8 +67,11 @@ namespace Fundoo_Notes.Controllers
             return Ok(result);
         }
 
-
-
+        /// <summary>
+        /// Deletes a label belonging to the authenticated user.
+        /// </summary>
+        /// <param name="labelId">ID of the label to delete.</param>
+        /// <returns>Result of the delete operation.</returns>
         [HttpDelete("DeleteLabel")]
         public async Task<IActionResult> DeleteLabel(int labelId)
         {
@@ -83,6 +107,10 @@ namespace Fundoo_Notes.Controllers
             }
         }
 
+        /// <summary>
+        /// Retrieves all labels belonging to the authenticated user.
+        /// </summary>
+        /// <returns>List of labels.</returns>
         [HttpGet("GetLabels")]
         public async Task<IActionResult> GetLabelsAsync()
         {

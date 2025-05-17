@@ -5,6 +5,10 @@ using Repository.DTO;
 
 namespace Fundoo_Notes.Controllers
 {
+    /// <summary>
+    /// Controller for managing collaborators on notes.
+    /// Requires authorized user.
+    /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
@@ -13,11 +17,22 @@ namespace Fundoo_Notes.Controllers
         private readonly ICollaboratorBL _collabBL;
         private readonly ILogger<NotesController> _logger;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="CollaboratorController"/> class.
+        /// </summary>
+        /// <param name="collabBL">Business logic interface for collaborators.</param>
+        /// <param name="logger">Logger instance for logging events.</param>
         public CollaboratorController(ICollaboratorBL collabBL, ILogger<NotesController> logger)
         {
             _collabBL = collabBL;
             _logger = logger;
         }
+
+        /// <summary>
+        /// Adds a collaborator to a note.
+        /// </summary>
+        /// <param name="dto">Collaborator details including note and collaborator info.</param>
+        /// <returns>Result of the add collaborator operation.</returns>
         [HttpPost("AddCollaborator")]
         public async Task<IActionResult> AddCollaborator([FromBody] CollaboratorDto dto)
         {
@@ -38,6 +53,11 @@ namespace Fundoo_Notes.Controllers
             }
         }
 
+        /// <summary>
+        /// Retrieves all collaborators for a specific note.
+        /// </summary>
+        /// <param name="noteId">ID of the note to retrieve collaborators for.</param>
+        /// <returns>List of collaborators or error response if none found.</returns>
         [HttpGet("GetCollaborators")]
         public async Task<IActionResult> GetCollaborators(int noteId)
         {
@@ -63,6 +83,11 @@ namespace Fundoo_Notes.Controllers
             }
         }
 
+        /// <summary>
+        /// Removes a collaborator from a note.
+        /// </summary>
+        /// <param name="dto">Collaborator details including note and collaborator info.</param>
+        /// <returns>Result of the remove collaborator operation.</returns>
         [HttpDelete("RemoveCollaborator")]
         public async Task<IActionResult> RemoveCollaborator([FromBody] CollaboratorDto dto)
         {
